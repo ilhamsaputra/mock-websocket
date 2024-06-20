@@ -117,12 +117,22 @@
                 return;
             }
 
-            ws = new WebSocket(`wss://glacial-crag-46531-f77494ccc096.herokuapp.com/${roomID}`);
+            ws = new WebSocket(`wss://shrub-woozy-carpet.glitch.me/${roomID}`);
 
             ws.onopen = function() {
                 document.getElementById('status').innerText = 'Connected';
                 logMessage(`Connected to room: ${roomID}`);
                 ws.send(JSON.stringify({ type: 'config', symbol, intervalTime, totalDataSent }));
+            };
+
+            ws.onmessage = function(event) {
+                const message = event.data;
+                try {
+                    const parsedMessage = JSON.parse(message);
+                    logMessage(`Received: ${parsedMessage.message}`);
+                } catch (e) {
+                    logMessage(`Received: ${message}`);
+                }
             };
 
             ws.onclose = function() {
