@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Client</title>
+    <style>
+        /* existing styles */
+        #logs {
+            list-style-type: none;
+            padding: 0;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+        }
+        #logs li {
+            padding: 5px;
+            border-bottom: 1px solid #ccc;
+        }
+        .button-group, .config-group {
+            margin-bottom: 20px;
+        }
+        .log-title {
+            display: flex;
+            align-items: center;
+        }
+        .log-title button {
+            margin-left: 10px;
+        }
+        .container {
+            display: flex;
+            flex-direction: row;
+            gap: 40px;
+            justify-content: flex-start;
+        }
+        .control-panel {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            padding: 10px;
+            width: 100%;
+            max-width: 600px;
+        }
+        .config-group label {
+            display: inline-block;
+            margin-bottom: 5px;
+        }
+        .button-group button {
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .config-inputs {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .config-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebSocket Client</h1>
+    <div class="container">
+        <div>
+            <input type="text" id="roomInput" placeholder="Enter room ID">
+            <button id="connect">Connect</button>
+            <button id="disconnect">Disconnect</button>
+            <button id="startServer">Start Server</button>
+            <button id="stopServer">Stop Server</button>
+            <label id="status">Disconnected</label>
+            <br><br>
+            <input type="text" id="messageInput" placeholder="Enter message">
+            <button id="sendMessage">Send Message</button>
+        </div>
+        <div class="control-panel">
+            <div class="config-inputs">
+                <label for="symbolInput">Symbol:</label>
+                <input type="text" id="symbolInput" placeholder="Default is BBCA">
+                <label for="intervalInput">Interval Sent:</label>
+                <input type="number" id="intervalInput" placeholder="in Milisecond Default is 1000 ms">
+                <label for="totalDataSentInput">Max Total Data / Sent:</label>
+                <input type="number" id="totalDataSentInput" placeholder="Default is 10">
+                <button id="setConfig">Set Config</button>
+            </div>
+        </div>
+        <div class="control-panel config-buttons">
+            <div class="button-group">
+                <button id="runOrderbook">Run Random Orderbook</button>
+                <button id="stopOrderbook">Stop Random Orderbook</button>
+                <br>
+                <button id="runRunningTrade">Run Random Running Trade</button>
+                <button id="stopRunningTrade">Stop Random Running Trade</button>
+            </div>
+        </div>
+    </div>
+    <div class="log-title">
+        <h2>Logs</h2>
+        <button id="clearLogs">Clear Logs</button>
+    </div>
+    <ul id="logs"></ul>
+
+    <script>
+        let ws;
+
+        document.getElementById('connect').onclick = function() {
+            const roomID = document.getElementById('roomInput').value;
+            const symbol = document.getElementById('symbolInput').value || 'BBCA';
+            const intervalTime = document.getElementById('intervalInput').value || 1000;
+            const totalDataSent = document.getElementById('totalDataSentInput').value || 10;
+
+            if (!roomID) {
+                alert('Please enter a room ID.');
+                return;
+            }
+
+            ws = new WebSocket(`wss://glacial-crag-46531-f77494ccc096.herokuapp.com/${roomID}`);
+
+            ws.onopen = function() {
+                document.getElementById('status').innerText = 'Connected';
+                logMessage(`Connected to room: ${roomID}`);
+                ws.send(JSON.stringify({ type: 'config', symbol, intervalTime, totalDataSent }));
+            };
+
+            ws.onclose = function() {
+                document.getElementById('status').innerText = 'Disconnected';
+                logMessage('Disconnected from server');
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                logMessage(`WebSocket error: ${error.message}`);
+            };
+        };
+
+        document.getElementById('disconnect').onclick = function() {
+            if (ws) {
+                ws.close();
+            }
+        };
+
+        document.getElementById('sendMessage').onclick = function() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const message = document.getElementById('messageInput').value;
+                ws.send(message);
+                logMessage(`sent: ${message}`);
+            } else {
+                alert('WebSocket is not connected.');
+            }
+        };
+
+        document.getElementById('runOrderbook').onclick = function() {
+            sendMessage('start_orderbook');
+        };
+
+        document.getElementById('runRunningTrade').onclick = function() {
+            sendMessage('start_running_trade');
+        };
+
+        document.getElementById('stopOrderbook').onclick = function() {
+            sendMessage('stop_orderbook');
+        };
+
+        document.getElementById('stopRunningTrade').onclick = function() {
+            sendMessage('stop_running_trade');
+        };
+
+        document.getElementById('clearLogs').onclick = function() {
+            clearLogs();
+        };
+
+        document.getElementById('setConfig').onclick = function() {
+            const symbol = document.getElementById('symbolInput').value || 'BBCA';
+            const intervalTime = document.getElementById('intervalInput').value || 1000;
+            const totalDataSent = document.getElementById('totalDataSentInput').value || 10;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'config', symbol, intervalTime, totalDataSent }));
+                logMessage(`Config set: Symbol=${symbol}, Interval=${intervalTime}ms, Total Data=${totalDataSent}`);
+            } else {
+                alert('WebSocket is not connected.');
+            }
+        };
+
+        document.getElementById('startServer').onclick = function() {
+            fetch('/start-server', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => logMessage(`Server started: ${data.message}`))
+                .catch(error => logMessage(`Error: ${error.message}`));
+        };
+
+        document.getElementById('stopServer').onclick = function() {
+            fetch('/stop-server', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => logMessage(`Server stopped: ${data.message}`))
+                .catch(error => logMessage(`Error: ${error.message}`));
+        };
+
+        function sendMessage(message) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(message);
+                logMessage(`sent: ${message}`);
+            } else {
+                alert('WebSocket is not connected.');
+            }
+        }
+
+        function logMessage(message) {
+            const logList = document.getElementById('logs');
+            const logItem = document.createElement('li');
+            logItem.textContent = message;
+            logList.appendChild(logItem);
+            logList.scrollTop = logList.scrollHeight;
+        }
+
+        function clearLogs() {
+            const logList = document.getElementById('logs');
+            logList.innerHTML = '';
+        }
+    </script>
+</body>
+</html>
